@@ -2,8 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	httphandler "mdm-intranext/internal/adapters/handler/http"
+	"mdm-intranext/internal/adapters/repository/postgres"
+	"mdm-intranext/internal/core/services"
+	"net/http"
 	"os"
+	"time"
 
 	"mdm-intranext/pkg/database"
 	"mdm-intranext/pkg/vault"
@@ -35,6 +41,29 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer dbPool.Close()
+
+	deviceRepo := postgres.NewDeviceRepository(dbPool)
+	log.Println("Connected to database")
+
+	deviceSvc := services.NewDeviceService(deviceRepo)
+	log.Println("Connected to device service")
+
+	mux := http.NewServeMux()
+	deviceHandler := httphandler.NewDeviceHandler(deviceSvc)
+	deviceHandler.RegisterRoutes(mux)
+
+	srv := &http.Server{
+		Addr:    		":" + os.Getenv("PORT"),
+		Handler: 		mux,
+		ReadTimeout:  	5 * time.Second,
+		WriteTimeout: 	10 * time.Second,
+		IdleTimeout:  	120 * time.Second,
+	}
+
+	log.Println("Listening on port " + os.Getenv("PORT"))
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatalf("listen: %s\n", err)
+	}
 
 	log.Println("Backend inicializado: Conexión segura a Vault y PostgreSQL establecida.")
 }
